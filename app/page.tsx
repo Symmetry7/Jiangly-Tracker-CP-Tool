@@ -649,7 +649,7 @@ export default function JianglyRoadmap() {
                               No problems found matching your search.
                             </div>
                           ) : (
-                            filteredProblems.slice(0, 120).map((problem) => {
+                            filteredProblems.slice(0, 120).map((problem, index) => {
                               if (!problem || !problem.contestId || !problem.index) return null
 
                               return (
@@ -662,11 +662,16 @@ export default function JianglyRoadmap() {
                                   }`}
                                 >
                                   <div className="flex items-center gap-3 flex-1 min-w-0">
-                                    {isProblemSolved(problem) ? (
-                                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
-                                    ) : (
-                                      <Circle className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                                    )}
+                                    <div className="flex items-center gap-2 flex-shrink-0">
+                                      <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded min-w-[2rem] text-center">
+                                        {index + 1}
+                                      </span>
+                                      {isProblemSolved(problem) ? (
+                                        <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                                      ) : (
+                                        <Circle className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                                      )}
+                                    </div>
                                     <div className="flex-1 min-w-0">
                                       <a
                                         href={getSubmissionUrl(problem)}
@@ -758,8 +763,10 @@ export default function JianglyRoadmap() {
               </div>
 
               <div className="space-y-3">
-                {paginatedProblems.map((problem) => {
+                {paginatedProblems.map((problem, index) => {
                   if (!problem || !problem.contestId || !problem.index) return null
+
+                  const globalIndex = (currentPage - 1) * PROBLEMS_PER_PAGE + index + 1
 
                   return (
                     <div
@@ -771,11 +778,16 @@ export default function JianglyRoadmap() {
                       }`}
                     >
                       <div className="flex items-center gap-3 flex-1 min-w-0">
-                        {isProblemSolved(problem) ? (
-                          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-                        ) : (
-                          <Circle className="w-5 h-5 text-gray-400" />
-                        )}
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded min-w-[2.5rem] text-center">
+                            {globalIndex}
+                          </span>
+                          {isProblemSolved(problem) ? (
+                            <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                          ) : (
+                            <Circle className="w-5 h-5 text-gray-400" />
+                          )}
+                        </div>
                         <div className="flex-1 min-w-0">
                           <a
                             href={getSubmissionUrl(problem)}
