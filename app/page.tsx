@@ -309,12 +309,13 @@ export default function JianglyRoadmap() {
   )
 
   const getSubmissionUrl = useCallback((problem: Problem) => {
-    if (!problem) return "#"
+    if (!problem || !problem.submissionInfo?.submissionId) return null
+    return `https://codeforces.com/contest/${problem.contestId}/submission/${problem.submissionInfo.submissionId}`
+  }, [])
 
-    if (problem.submissionInfo?.submissionId) {
-      return `https://codeforces.com/contest/${problem.contestId}/submission/${problem.submissionInfo.submissionId}`
-    }
-    return problem.url || `https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`
+  const getProblemUrl = useCallback((problem: Problem) => {
+    if (!problem) return "#"
+    return `https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`
   }, [])
 
   // Global search filtered problems
@@ -674,7 +675,7 @@ export default function JianglyRoadmap() {
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <a
-                                        href={getSubmissionUrl(problem)}
+                                        href={getProblemUrl(problem)}
                                         target="_blank"
                                         rel="noopener noreferrer"
                                         className="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 block truncate font-medium"
@@ -705,14 +706,16 @@ export default function JianglyRoadmap() {
                                         {problem.rating}
                                       </Badge>
                                     )}
-                                    {problem.submissionInfo && (
+                                    {getSubmissionUrl(problem) && (
                                       <Button
                                         size="sm"
                                         variant="outline"
                                         className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-500/50 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs px-3 py-1 transition-all duration-200"
                                         onClick={() => window.open(getSubmissionUrl(problem), "_blank")}
+                                        title="View jiangly's solution"
                                       >
-                                        <ExternalLink className="w-3 h-3" />
+                                        <ExternalLink className="w-3 h-3 mr-1" />
+                                        Solution
                                       </Button>
                                     )}
                                   </div>
@@ -790,7 +793,7 @@ export default function JianglyRoadmap() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <a
-                            href={getSubmissionUrl(problem)}
+                            href={getProblemUrl(problem)}
                             target="_blank"
                             rel="noopener noreferrer"
                             className="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 block truncate font-medium"
@@ -819,14 +822,16 @@ export default function JianglyRoadmap() {
                             {problem.rating}
                           </Badge>
                         )}
-                        {problem.submissionInfo && (
+                        {getSubmissionUrl(problem) && (
                           <Button
                             size="sm"
                             variant="outline"
                             className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-500/50 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs px-3 py-1 transition-all duration-200"
                             onClick={() => window.open(getSubmissionUrl(problem), "_blank")}
+                            title="View jiangly's solution"
                           >
-                            <ExternalLink className="w-3 h-3" />
+                            <ExternalLink className="w-3 h-3 mr-1" />
+                            Solution
                           </Button>
                         )}
                       </div>
