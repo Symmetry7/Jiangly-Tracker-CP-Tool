@@ -649,7 +649,7 @@ export default function JianglyRoadmap() {
                               No problems found matching your search.
                             </div>
                           ) : (
-                            filteredProblems.slice(0, 50).map((problem) => {
+                            filteredProblems.slice(0, 120).map((problem) => {
                               if (!problem || !problem.contestId || !problem.index) return null
 
                               return (
@@ -715,9 +715,9 @@ export default function JianglyRoadmap() {
                               )
                             })
                           )}
-                          {filteredProblems.length > 50 && (
+                          {filteredProblems.length > 120 && (
                             <div className="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
-                              Showing first 50 problems. Use search to find specific problems.
+                              Showing first 120 problems. Use search to find specific problems.
                             </div>
                           )}
                         </div>
@@ -725,7 +725,7 @@ export default function JianglyRoadmap() {
                         {/* Search Results Info */}
                         {searchQueries[rating] && (
                           <div className="text-center mt-4 text-sm text-gray-500 dark:text-gray-400">
-                            Showing {Math.min(filteredProblems.length, 50)} of {filteredProblems.length} problems
+                            Showing {Math.min(filteredProblems.length, 120)} of {filteredProblems.length} problems
                           </div>
                         )}
                       </CardContent>
