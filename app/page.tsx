@@ -76,39 +76,93 @@ export default function JianglyRoadmap() {
   const [searchQueries, setSearchQueries] = useState<{ [key: string]: string }>({})
   const [hiddenTags, setHiddenTags] = useState<Set<string>>(new Set())
   const [globalSearch, setGlobalSearch] = useState("")
+  const [loadingProgress, setLoadingProgress] = useState(0)
 
   const debouncedGlobalSearch = useDebounce(globalSearch, 300)
+
+  // Safe localStorage access
+  const getStoredHandle = useCallback(() => {
+    try {
+      if (typeof window !== "undefined") {
+        return localStorage.getItem("codeforcesHandle") || ""
+      }
+    } catch (error) {
+      console.error("Error accessing localStorage:", error)
+    }
+    return ""
+  }, [])
+
+  const setStoredHandle = useCallback((handle: string) => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.setItem("codeforcesHandle", handle)
+      }
+    } catch (error) {
+      console.error("Error setting localStorage:", error)
+    }
+  }, [])
+
+  const removeStoredHandle = useCallback(() => {
+    try {
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("codeforcesHandle")
+      }
+    } catch (error) {
+      console.error("Error removing from localStorage:", error)
+    }
+  }, [])
 
   const fetchJianglyProblems = useCallback(async () => {
     setLoading(true)
     setError("")
+    setLoadingProgress(0)
+
+    // Simulate progress for better UX
+    const progressInterval = setInterval(() => {
+      setLoadingProgress((prev) => {
+        if (prev < 90) return prev + 10
+        return prev
+      })
+    }, 2000)
+
     try {
       const response = await fetch("/api/jiangly-problems")
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`)
       }
       const data = await response.json()
-      if (data.success) {
-        setJianglyProblems(data.problems || [])
-        console.log(`Loaded ${(data.problems || []).length} problems from jiangly`)
+      if (data.success && Array.isArray(data.problems)) {
+        setJianglyProblems(data.problems)
+        setLoadingProgress(100)
+        console.log(`Loaded ${data.problems.length} problems from jiangly`)
       } else {
         setError(data.error || "Failed to fetch jiangly's problems")
+        setJianglyProblems([])
       }
     } catch (err) {
       console.error("Error fetching jiangly problems:", err)
       setError("Error fetching data. Please try again.")
+      setJianglyProblems([])
     } finally {
+      clearInterval(progressInterval)
       setLoading(false)
+      setLoadingProgress(0)
     }
   }, [])
 
   const fetchUserSolvedProblems = useCallback(async (handle: string) => {
+    if (!handle || !handle.trim()) return
+
     setUserLoading(true)
     try {
-      const response = await fetch(`/api/user-submissions?handle=${handle}`)
+      const response = await fetch(`/api/user-submissions?handle=${encodeURIComponent(handle)}`)
       const data = await response.json()
-      if (data.success) {
-        const solved = new Set(data.solvedProblems.map((p: Problem) => `${p.contestId}${p.index}`))
+      if (data.success && Array.isArray(data.solvedProblems)) {
+        const solved = new Set(
+          data.solvedProblems
+            .filter((p: any) => p && p.contestId && p.index)
+            .map((p: Problem) => `${p.contestId}${p.index}`),
+        )
         setUserSolvedProblems(solved)
         setError("")
       } else {
@@ -116,6 +170,7 @@ export default function JianglyRoadmap() {
         setUserSolvedProblems(new Set())
       }
     } catch (err) {
+      console.error("Error fetching user submissions:", err)
       setError(`Error fetching submissions for ${handle}. Please try again.`)
       setUserSolvedProblems(new Set())
     } finally {
@@ -126,29 +181,29 @@ export default function JianglyRoadmap() {
   const handleSubmit = useCallback(
     async (e: React.FormEvent) => {
       e.preventDefault()
-      if (userHandle.trim()) {
-        const handle = userHandle.trim()
-        localStorage.setItem("codeforcesHandle", handle)
-        setSavedHandle(handle)
+      const trimmedHandle = userHandle.trim()
+      if (trimmedHandle) {
+        setStoredHandle(trimmedHandle)
+        setSavedHandle(trimmedHandle)
         setUserHandle("")
         setError("")
 
         if (jianglyProblems.length > 0) {
-          await fetchUserSolvedProblems(handle)
+          await fetchUserSolvedProblems(trimmedHandle)
         }
       }
     },
-    [userHandle, jianglyProblems.length, fetchUserSolvedProblems],
+    [userHandle, jianglyProblems.length, fetchUserSolvedProblems, setStoredHandle],
   )
 
   const clearHandle = useCallback(() => {
-    localStorage.removeItem("codeforcesHandle")
+    removeStoredHandle()
     setSavedHandle("")
     setUserSolvedProblems(new Set())
-  }, [])
+  }, [removeStoredHandle])
 
   const getRatingColor = useCallback((rating?: number) => {
-    if (!rating) return "bg-gray-500 dark:bg-gray-600"
+    if (!rating || typeof rating !== "number") return "bg-gray-500 dark:bg-gray-600"
     if (rating < 1200) return "bg-gray-500 dark:bg-gray-600"
     if (rating < 1400) return "bg-green-500 dark:bg-green-600"
     if (rating < 1600) return "bg-cyan-500 dark:bg-cyan-600"
@@ -160,7 +215,7 @@ export default function JianglyRoadmap() {
   }, [])
 
   const { groupedProblems, progress, totalSolved } = useMemo(() => {
-    if (!jianglyProblems || jianglyProblems.length === 0) {
+    if (!Array.isArray(jianglyProblems) || jianglyProblems.length === 0) {
       return {
         groupedProblems: [],
         progress: 0,
@@ -169,28 +224,32 @@ export default function JianglyRoadmap() {
     }
 
     const groups: { [key: string]: Problem[] } = {}
+
     jianglyProblems.forEach((problem) => {
-      if (problem && typeof problem.rating === "number") {
-        const rating = problem.rating || 0
+      if (problem && typeof problem.rating === "number" && problem.contestId && problem.index) {
+        const rating = problem.rating
         const key = Math.floor(rating / 100) * 100
         if (!groups[key]) groups[key] = []
         groups[key].push(problem)
       }
     })
 
-    const solvedCount = jianglyProblems.filter((p) => p && userSolvedProblems.has(`${p.contestId}${p.index}`)).length
+    const solvedCount = jianglyProblems.filter(
+      (p) => p && p.contestId && p.index && userSolvedProblems.has(`${p.contestId}${p.index}`),
+    ).length
 
     const progressPercent = jianglyProblems.length > 0 ? (solvedCount / jianglyProblems.length) * 100 : 0
 
     return {
       groupedProblems: Object.entries(groups).sort(([a], [b]) => Number.parseInt(a) - Number.parseInt(b)),
-      progress: progressPercent,
+      progress: Math.min(100, Math.max(0, progressPercent)),
       totalSolved: solvedCount,
     }
   }, [jianglyProblems, userSolvedProblems])
 
   const isProblemSolved = useCallback(
     (problem: Problem) => {
+      if (!problem || !problem.contestId || !problem.index) return false
       return userSolvedProblems.has(`${problem.contestId}${problem.index}`)
     },
     [userSolvedProblems],
@@ -229,47 +288,65 @@ export default function JianglyRoadmap() {
 
   const getFilteredProblems = useCallback(
     (problems: Problem[], rating: string) => {
+      if (!Array.isArray(problems)) return []
+
       const query = searchQueries[rating]?.toLowerCase() || ""
       if (!query) return problems
 
-      return problems.filter(
-        (problem) =>
-          problem.name.toLowerCase().includes(query) ||
-          `${problem.contestId}${problem.index}`.toLowerCase().includes(query) ||
-          problem.tags.some((tag) => tag.toLowerCase().includes(query)),
-      )
+      return problems.filter((problem) => {
+        if (!problem) return false
+
+        const nameMatch = problem.name?.toLowerCase().includes(query) || false
+        const idMatch = `${problem.contestId}${problem.index}`.toLowerCase().includes(query)
+        const tagMatch =
+          Array.isArray(problem.tags) &&
+          problem.tags.some((tag) => typeof tag === "string" && tag.toLowerCase().includes(query))
+
+        return nameMatch || idMatch || tagMatch
+      })
     },
     [searchQueries],
   )
 
   const getSubmissionUrl = useCallback((problem: Problem) => {
-    if (problem.submissionInfo) {
+    if (!problem) return "#"
+
+    if (problem.submissionInfo?.submissionId) {
       return `https://codeforces.com/contest/${problem.contestId}/submission/${problem.submissionInfo.submissionId}`
     }
-    return problem.url
+    return problem.url || `https://codeforces.com/problemset/problem/${problem.contestId}/${problem.index}`
   }, [])
 
   // Global search filtered problems
   const globalFilteredProblems = useMemo(() => {
+    if (!Array.isArray(jianglyProblems)) return []
     if (!debouncedGlobalSearch) return jianglyProblems
 
     const query = debouncedGlobalSearch.toLowerCase()
-    return jianglyProblems.filter(
-      (problem) =>
-        problem.name.toLowerCase().includes(query) ||
-        `${problem.contestId}${problem.index}`.toLowerCase().includes(query) ||
-        problem.tags.some((tag) => tag.toLowerCase().includes(query)),
-    )
+    return jianglyProblems.filter((problem) => {
+      if (!problem) return false
+
+      const nameMatch = problem.name?.toLowerCase().includes(query) || false
+      const idMatch = `${problem.contestId}${problem.index}`.toLowerCase().includes(query)
+      const tagMatch =
+        Array.isArray(problem.tags) &&
+        problem.tags.some((tag) => typeof tag === "string" && tag.toLowerCase().includes(query))
+
+      return nameMatch || idMatch || tagMatch
+    })
   }, [jianglyProblems, debouncedGlobalSearch])
 
   const paginatedProblems = useMemo(() => {
+    if (!Array.isArray(globalFilteredProblems)) return []
+
     const startIndex = (currentPage - 1) * PROBLEMS_PER_PAGE
     const endIndex = startIndex + PROBLEMS_PER_PAGE
     return globalFilteredProblems.slice(startIndex, endIndex)
   }, [globalFilteredProblems, currentPage])
 
-  const totalPages = Math.ceil(globalFilteredProblems.length / PROBLEMS_PER_PAGE)
+  const totalPages = Math.max(1, Math.ceil(globalFilteredProblems.length / PROBLEMS_PER_PAGE))
 
+  // Mount effect
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -277,12 +354,12 @@ export default function JianglyRoadmap() {
   // Load saved handle on mount
   useEffect(() => {
     if (mounted) {
-      const saved = localStorage.getItem("codeforcesHandle")
+      const saved = getStoredHandle()
       if (saved) {
         setSavedHandle(saved)
       }
     }
-  }, [mounted])
+  }, [mounted, getStoredHandle])
 
   // Fetch jiangly problems on mount
   useEffect(() => {
@@ -296,15 +373,18 @@ export default function JianglyRoadmap() {
     if (savedHandle && jianglyProblems.length > 0) {
       fetchUserSolvedProblems(savedHandle)
     }
-  }, [savedHandle, jianglyProblems, fetchUserSolvedProblems])
+  }, [savedHandle, jianglyProblems.length, fetchUserSolvedProblems])
 
+  // Set hidden tags when problems load
   useEffect(() => {
-    if (jianglyProblems.length > 0) {
+    if (Array.isArray(jianglyProblems) && jianglyProblems.length > 0) {
       const ratingGroups = new Set<string>()
       jianglyProblems.forEach((problem) => {
-        const rating = problem.rating || 0
-        const key = Math.floor(rating / 100) * 100
-        ratingGroups.add(key.toString())
+        if (problem && typeof problem.rating === "number") {
+          const rating = problem.rating
+          const key = Math.floor(rating / 100) * 100
+          ratingGroups.add(key.toString())
+        }
       })
       setHiddenTags(ratingGroups)
     }
@@ -312,10 +392,10 @@ export default function JianglyRoadmap() {
 
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600">Loading...</p>
+          <p className="mt-4 text-gray-600 dark:text-gray-300">Loading...</p>
         </div>
       </div>
     )
@@ -431,7 +511,13 @@ export default function JianglyRoadmap() {
           <div className="text-center py-12">
             <Loader2 className="h-12 w-12 animate-spin mx-auto text-blue-600 dark:text-blue-400" />
             <p className="mt-4 text-gray-900 dark:text-white font-medium">Loading jiangly's problems...</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">This may take a moment...</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Fetching data from Codeforces API...</p>
+            {loadingProgress > 0 && (
+              <div className="mt-4 max-w-md mx-auto">
+                <Progress value={loadingProgress} className="w-full h-2" />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-2">{loadingProgress}% complete</p>
+              </div>
+            )}
           </div>
         )}
 
@@ -477,6 +563,8 @@ export default function JianglyRoadmap() {
               </div>
 
               {groupedProblems.map(([rating, problems]) => {
+                if (!Array.isArray(problems)) return null
+
                 const isExpanded = expandedGroups.has(rating)
                 const solvedInGroup = problems.filter((p) => isProblemSolved(p)).length
                 const filteredProblems = getFilteredProblems(problems, rating)
@@ -548,67 +636,71 @@ export default function JianglyRoadmap() {
                               No problems found matching your search.
                             </div>
                           ) : (
-                            filteredProblems.slice(0, 50).map((problem) => (
-                              <div
-                                key={`${problem.contestId}${problem.index}`}
-                                className={`flex items-center justify-between p-4 rounded-lg border text-sm transition-all duration-200 hover:shadow-md ${
-                                  isProblemSolved(problem)
-                                    ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-500/50"
-                                    : "bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
-                                }`}
-                              >
-                                <div className="flex items-center gap-3 flex-1 min-w-0">
-                                  {isProblemSolved(problem) ? (
-                                    <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
-                                  ) : (
-                                    <Circle className="w-5 h-5 text-gray-400 flex-shrink-0" />
-                                  )}
-                                  <div className="flex-1 min-w-0">
-                                    <a
-                                      href={problem.url}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 block truncate font-medium"
-                                    >
-                                      {problem.contestId}
-                                      {problem.index}. {problem.name}
-                                    </a>
-                                    {!tagsHidden && (
-                                      <div className="flex gap-1 mt-2">
-                                        {problem.tags.slice(0, 2).map((tag) => (
-                                          <Badge
-                                            key={tag}
-                                            variant="secondary"
-                                            className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300"
-                                          >
-                                            {tag}
-                                          </Badge>
-                                        ))}
-                                      </div>
+                            filteredProblems.slice(0, 50).map((problem) => {
+                              if (!problem || !problem.contestId || !problem.index) return null
+
+                              return (
+                                <div
+                                  key={`${problem.contestId}${problem.index}`}
+                                  className={`flex items-center justify-between p-4 rounded-lg border text-sm transition-all duration-200 hover:shadow-md ${
+                                    isProblemSolved(problem)
+                                      ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-500/50"
+                                      : "bg-gray-50 dark:bg-gray-700/50 border-gray-200 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700"
+                                  }`}
+                                >
+                                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                                    {isProblemSolved(problem) ? (
+                                      <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
+                                    ) : (
+                                      <Circle className="w-5 h-5 text-gray-400 flex-shrink-0" />
+                                    )}
+                                    <div className="flex-1 min-w-0">
+                                      <a
+                                        href={getSubmissionUrl(problem)}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 block truncate font-medium"
+                                      >
+                                        {problem.contestId}
+                                        {problem.index}. {problem.name || "Unknown Problem"}
+                                      </a>
+                                      {!tagsHidden && Array.isArray(problem.tags) && (
+                                        <div className="flex gap-1 mt-2">
+                                          {problem.tags.slice(0, 2).map((tag, index) => (
+                                            <Badge
+                                              key={`${tag}-${index}`}
+                                              variant="secondary"
+                                              className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300"
+                                            >
+                                              {tag}
+                                            </Badge>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2 flex-shrink-0">
+                                    {problem.rating && (
+                                      <Badge
+                                        className={`${getRatingColor(problem.rating)} text-white text-xs font-medium`}
+                                      >
+                                        {problem.rating}
+                                      </Badge>
+                                    )}
+                                    {problem.submissionInfo && (
+                                      <Button
+                                        size="sm"
+                                        variant="outline"
+                                        className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-500/50 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs px-3 py-1 transition-all duration-200"
+                                        onClick={() => window.open(getSubmissionUrl(problem), "_blank")}
+                                      >
+                                        <ExternalLink className="w-3 h-3" />
+                                      </Button>
                                     )}
                                   </div>
                                 </div>
-                                <div className="flex items-center gap-2 flex-shrink-0">
-                                  {problem.rating && (
-                                    <Badge
-                                      className={`${getRatingColor(problem.rating)} text-white text-xs font-medium`}
-                                    >
-                                      {problem.rating}
-                                    </Badge>
-                                  )}
-                                  {problem.submissionInfo && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-500/50 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs px-3 py-1 transition-all duration-200"
-                                      onClick={() => window.open(getSubmissionUrl(problem), "_blank")}
-                                    >
-                                      <ExternalLink className="w-3 h-3" />
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                            ))
+                              )
+                            })
                           )}
                           {filteredProblems.length > 50 && (
                             <div className="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
@@ -653,63 +745,69 @@ export default function JianglyRoadmap() {
               </div>
 
               <div className="space-y-3">
-                {paginatedProblems.map((problem) => (
-                  <div
-                    key={`${problem.contestId}${problem.index}`}
-                    className={`flex items-center justify-between p-4 rounded-lg border text-sm transition-all duration-200 hover:shadow-md ${
-                      isProblemSolved(problem)
-                        ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-500/50"
-                        : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
-                    }`}
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {isProblemSolved(problem) ? (
-                        <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
-                      ) : (
-                        <Circle className="w-5 h-5 text-gray-400" />
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <a
-                          href={problem.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 block truncate font-medium"
-                        >
-                          {problem.contestId}
-                          {problem.index}. {problem.name}
-                        </a>
-                        <div className="flex gap-1 mt-2">
-                          {problem.tags.slice(0, 3).map((tag) => (
-                            <Badge
-                              key={tag}
-                              variant="secondary"
-                              className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300"
-                            >
-                              {tag}
-                            </Badge>
-                          ))}
+                {paginatedProblems.map((problem) => {
+                  if (!problem || !problem.contestId || !problem.index) return null
+
+                  return (
+                    <div
+                      key={`${problem.contestId}${problem.index}`}
+                      className={`flex items-center justify-between p-4 rounded-lg border text-sm transition-all duration-200 hover:shadow-md ${
+                        isProblemSolved(problem)
+                          ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-500/50"
+                          : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700"
+                      }`}
+                    >
+                      <div className="flex items-center gap-3 flex-1 min-w-0">
+                        {isProblemSolved(problem) ? (
+                          <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400" />
+                        ) : (
+                          <Circle className="w-5 h-5 text-gray-400" />
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <a
+                            href={getSubmissionUrl(problem)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-gray-900 dark:text-white hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 block truncate font-medium"
+                          >
+                            {problem.contestId}
+                            {problem.index}. {problem.name || "Unknown Problem"}
+                          </a>
+                          {Array.isArray(problem.tags) && (
+                            <div className="flex gap-1 mt-2">
+                              {problem.tags.slice(0, 3).map((tag, index) => (
+                                <Badge
+                                  key={`${tag}-${index}`}
+                                  variant="secondary"
+                                  className="text-xs bg-gray-200 dark:bg-gray-600 text-gray-700 dark:text-gray-300"
+                                >
+                                  {tag}
+                                </Badge>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        {problem.rating && (
+                          <Badge className={`${getRatingColor(problem.rating)} text-white text-xs font-medium`}>
+                            {problem.rating}
+                          </Badge>
+                        )}
+                        {problem.submissionInfo && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-500/50 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs px-3 py-1 transition-all duration-200"
+                            onClick={() => window.open(getSubmissionUrl(problem), "_blank")}
+                          >
+                            <ExternalLink className="w-3 h-3" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {problem.rating && (
-                        <Badge className={`${getRatingColor(problem.rating)} text-white text-xs font-medium`}>
-                          {problem.rating}
-                        </Badge>
-                      )}
-                      {problem.submissionInfo && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-500/50 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-600 dark:text-blue-400 text-xs px-3 py-1 transition-all duration-200"
-                          onClick={() => window.open(getSubmissionUrl(problem), "_blank")}
-                        >
-                          <ExternalLink className="w-3 h-3" />
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
 
               {/* Pagination */}
@@ -745,7 +843,7 @@ export default function JianglyRoadmap() {
         {/* Footer */}
         <footer className="text-center mt-16 py-8 border-t border-gray-200 dark:border-gray-700">
           <p className="text-gray-600 dark:text-gray-400">
-            Made with <span className="text-red-500">❤️</span> by ItsTheAvro
+            Made with <span className="text-red-500">❤️</span> by Symmetry
           </p>
         </footer>
       </div>

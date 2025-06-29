@@ -27,54 +27,68 @@ interface CodeforcesSubmission {
 async function fetchAllSubmissions(handle: string): Promise<CodeforcesSubmission[]> {
   const allSubmissions: CodeforcesSubmission[] = []
   let from = 1
-  const maxCount = 5000 // Increased to get more submissions
+  const maxCount = 5000
 
   try {
-    // Fetch more batches to get ALL submissions
-    for (let batch = 0; batch < 10; batch++) {
-      // Increased from 3 to 10 batches
+    // Reduced to 5 batches for faster loading while still getting most problems
+    for (let batch = 0; batch < 5; batch++) {
       console.log(`Fetching batch ${batch + 1}, submissions from ${from}`)
 
-      const response = await fetch(
-        `https://codeforces.com/api/user.status?handle=${handle}&from=${from}&count=${maxCount}`,
-        {
-          headers: {
-            "User-Agent": "Mozilla/5.0 (compatible; JianglyRoadmap/1.0)",
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 8000) // 8 second timeout per request
+
+      try {
+        const response = await fetch(
+          `https://codeforces.com/api/user.status?handle=${handle}&from=${from}&count=${maxCount}`,
+          {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (compatible; JianglyRoadmap/1.0)",
+            },
+            signal: controller.signal,
           },
-        },
-      )
+        )
 
-      if (!response.ok) {
-        console.error(`HTTP error: ${response.status}`)
-        break
+        clearTimeout(timeoutId)
+
+        if (!response.ok) {
+          console.error(`HTTP error: ${response.status}`)
+          break
+        }
+
+        const data = await response.json()
+
+        if (data.status !== "OK") {
+          console.error(`API error: ${data.comment}`)
+          break
+        }
+
+        const submissions = data.result
+        if (!submissions || submissions.length === 0) {
+          console.log("No more submissions found")
+          break
+        }
+
+        allSubmissions.push(...submissions)
+        console.log(`Added ${submissions.length} submissions, total: ${allSubmissions.length}`)
+
+        // If we got fewer submissions than requested, we've reached the end
+        if (submissions.length < maxCount) {
+          console.log(`Got ${submissions.length} submissions, reached end`)
+          break
+        }
+
+        from += maxCount
+
+        // Minimal delay for faster loading
+        await new Promise((resolve) => setTimeout(resolve, 50))
+      } catch (error) {
+        clearTimeout(timeoutId)
+        if (error instanceof Error && error.name === "AbortError") {
+          console.log(`Request ${batch + 1} timed out, continuing with next batch`)
+          continue
+        }
+        throw error
       }
-
-      const data = await response.json()
-
-      if (data.status !== "OK") {
-        console.error(`API error: ${data.comment}`)
-        break
-      }
-
-      const submissions = data.result
-      if (!submissions || submissions.length === 0) {
-        console.log("No more submissions found")
-        break
-      }
-
-      allSubmissions.push(...submissions)
-      console.log(`Added ${submissions.length} submissions, total: ${allSubmissions.length}`)
-
-      // If we got fewer submissions than requested, we've reached the end
-      if (submissions.length < maxCount) {
-        console.log(`Got ${submissions.length} submissions, reached end`)
-        break
-      }
-
-      from += maxCount
-
-      // Very short delay for faster loading
-      await new Promise((resolve) => setTimeout(resolve, 100))
     }
   } catch (error) {
     console.error("Error fetching submissions:", error)
@@ -88,8 +102,12 @@ export async function GET() {
   try {
     console.log("Starting to fetch jiangly's submissions...")
 
-    // Fetch ALL submissions
+    // Set overall timeout for the entire operation
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort(), 45000) // 45 second total timeout
+
     const allSubmissions = await fetchAllSubmissions("jiangly")
+    clearTimeout(timeoutId)
 
     if (!allSubmissions || allSubmissions.length === 0) {
       throw new Error("No submissions found")
@@ -154,7 +172,7 @@ export async function GET() {
       problems: problems,
       count: problems.length,
       totalSubmissions: allSubmissions.length,
-      ratingCounts: ratingCounts, // Include for debugging
+      ratingCounts: ratingCounts,
     })
   } catch (error) {
     console.error("Error fetching jiangly problems:", error)
@@ -162,7 +180,7 @@ export async function GET() {
       {
         success: false,
         error: `Failed to fetch problems: ${error instanceof Error ? error.message : "Unknown error"}`,
-        problems: [], // Always return an array
+        problems: [],
         count: 0,
       },
       { status: 500 },
