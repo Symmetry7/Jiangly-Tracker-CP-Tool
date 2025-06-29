@@ -30,12 +30,12 @@ async function fetchAllSubmissions(handle: string): Promise<CodeforcesSubmission
   const maxCount = 5000
 
   try {
-    // Reduced to 5 batches for faster loading while still getting most problems
-    for (let batch = 0; batch < 5; batch++) {
+    // Reduced to 3 batches for faster loading while still getting most problems
+    for (let batch = 0; batch < 3; batch++) {
       console.log(`Fetching batch ${batch + 1}, submissions from ${from}`)
 
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 8000) // 8 second timeout per request
+      const timeoutId = setTimeout(() => controller.abort(), 5000) // 5 second timeout per request
 
       try {
         const response = await fetch(
@@ -80,7 +80,7 @@ async function fetchAllSubmissions(handle: string): Promise<CodeforcesSubmission
         from += maxCount
 
         // Minimal delay for faster loading
-        await new Promise((resolve) => setTimeout(resolve, 50))
+        // await new Promise((resolve) => setTimeout(resolve, 50))
       } catch (error) {
         clearTimeout(timeoutId)
         if (error instanceof Error && error.name === "AbortError") {
@@ -104,7 +104,7 @@ export async function GET() {
 
     // Set overall timeout for the entire operation
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 45000) // 45 second total timeout
+    const timeoutId = setTimeout(() => controller.abort(), 20000) // 20 second total timeout
 
     const allSubmissions = await fetchAllSubmissions("jiangly")
     clearTimeout(timeoutId)
