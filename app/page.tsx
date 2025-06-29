@@ -419,6 +419,19 @@ export default function JianglyRoadmap() {
             </Button>
           </div>
 
+          {/* Symm Branding */}
+          <div className="mb-8">
+            <div className="inline-flex items-center justify-center mb-4">
+              <div className="relative">
+                <div className="text-3xl font-black tracking-wider bg-gradient-to-r from-blue-600 via-purple-600 to-blue-800 dark:from-blue-400 dark:via-purple-400 dark:to-blue-600 bg-clip-text text-transparent">
+                  SYMM
+                </div>
+                <div className="absolute -inset-1 bg-gradient-to-r from-blue-600/20 via-purple-600/20 to-blue-800/20 dark:from-blue-400/20 dark:via-purple-400/20 dark:to-blue-600/20 blur-sm -z-10 rounded-lg"></div>
+              </div>
+            </div>
+            <div className="w-16 h-0.5 bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 mx-auto mb-6"></div>
+          </div>
+
           <div className="mb-6">
             <h1 className="text-4xl font-bold mb-4 bg-gradient-to-r from-blue-600 to-purple-600 dark:from-blue-400 dark:to-purple-400 bg-clip-text text-transparent">
               Jiangly's Problem Roadmap
