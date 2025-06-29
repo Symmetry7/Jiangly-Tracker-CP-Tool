@@ -24,6 +24,7 @@ import {
   Sun,
   Moon,
   Loader2,
+  ArrowUp,
 } from "lucide-react"
 
 interface Problem {
@@ -43,6 +44,7 @@ interface Problem {
 }
 
 const PROBLEMS_PER_PAGE = 20
+const PROBLEMS_PER_RATING_PAGE = 100
 
 // Debounce hook for search
 function useDebounce(value: string, delay: number) {
@@ -73,12 +75,31 @@ export default function JianglyRoadmap() {
   const [error, setError] = useState("")
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set())
   const [currentPage, setCurrentPage] = useState(1)
+  const [ratingPages, setRatingPages] = useState<{ [key: string]: number }>({})
   const [searchQueries, setSearchQueries] = useState<{ [key: string]: string }>({})
   const [hiddenTags, setHiddenTags] = useState<Set<string>>(new Set())
   const [globalSearch, setGlobalSearch] = useState("")
   const [loadingProgress, setLoadingProgress] = useState(0)
+  const [showScrollTop, setShowScrollTop] = useState(false)
 
   const debouncedGlobalSearch = useDebounce(globalSearch, 300)
+
+  // Scroll to top functionality
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollTop(window.scrollY > 400)
+    }
+
+    window.addEventListener("scroll", handleScroll)
+    return () => window.removeEventListener("scroll", handleScroll)
+  }, [])
+
+  const scrollToTop = useCallback(() => {
+    window.scrollTo({
+      top: 0,
+      behavior: "smooth",
+    })
+  }, [])
 
   // Safe localStorage access
   const getStoredHandle = useCallback(() => {
@@ -255,17 +276,27 @@ export default function JianglyRoadmap() {
     [userSolvedProblems],
   )
 
-  const toggleGroup = useCallback((rating: string) => {
-    setExpandedGroups((prev) => {
-      const newExpanded = new Set(prev)
-      if (newExpanded.has(rating)) {
-        newExpanded.delete(rating)
-      } else {
-        newExpanded.add(rating)
-      }
-      return newExpanded
-    })
-  }, [])
+  const toggleGroup = useCallback(
+    (rating: string) => {
+      setExpandedGroups((prev) => {
+        const newExpanded = new Set(prev)
+        if (newExpanded.has(rating)) {
+          newExpanded.delete(rating)
+        } else {
+          newExpanded.add(rating)
+          // Initialize page for this rating if not exists
+          if (!ratingPages[rating]) {
+            setRatingPages((prevPages) => ({
+              ...prevPages,
+              [rating]: 1,
+            }))
+          }
+        }
+        return newExpanded
+      })
+    },
+    [ratingPages],
+  )
 
   const toggleTags = useCallback((rating: string) => {
     setHiddenTags((prev) => {
@@ -283,6 +314,18 @@ export default function JianglyRoadmap() {
     setSearchQueries((prev) => ({
       ...prev,
       [rating]: query,
+    }))
+    // Reset to first page when searching
+    setRatingPages((prev) => ({
+      ...prev,
+      [rating]: 1,
+    }))
+  }, [])
+
+  const updateRatingPage = useCallback((rating: string, page: number) => {
+    setRatingPages((prev) => ({
+      ...prev,
+      [rating]: page,
     }))
   }, [])
 
@@ -306,6 +349,16 @@ export default function JianglyRoadmap() {
       })
     },
     [searchQueries],
+  )
+
+  const getPaginatedRatingProblems = useCallback(
+    (problems: Problem[], rating: string) => {
+      const currentRatingPage = ratingPages[rating] || 1
+      const startIndex = (currentRatingPage - 1) * PROBLEMS_PER_RATING_PAGE
+      const endIndex = startIndex + PROBLEMS_PER_RATING_PAGE
+      return problems.slice(startIndex, endIndex)
+    },
+    [ratingPages],
   )
 
   const getSubmissionUrl = useCallback((problem: Problem) => {
@@ -582,7 +635,10 @@ export default function JianglyRoadmap() {
                 const isExpanded = expandedGroups.has(rating)
                 const solvedInGroup = problems.filter((p) => isProblemSolved(p)).length
                 const filteredProblems = getFilteredProblems(problems, rating)
+                const paginatedProblems = getPaginatedRatingProblems(filteredProblems, rating)
                 const tagsHidden = hiddenTags.has(rating)
+                const currentRatingPage = ratingPages[rating] || 1
+                const totalRatingPages = Math.max(1, Math.ceil(filteredProblems.length / PROBLEMS_PER_RATING_PAGE))
 
                 return (
                   <Card
@@ -643,6 +699,42 @@ export default function JianglyRoadmap() {
                           </Button>
                         </div>
 
+                        {/* Rating Group Pagination - Top */}
+                        {totalRatingPages > 1 && (
+                          <div className="flex items-center justify-center gap-3 mb-4">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => updateRatingPage(rating, Math.max(currentRatingPage - 1, 1))}
+                              disabled={currentRatingPage === 1}
+                              className="border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+                            >
+                              <ChevronLeft className="w-4 h-4" />
+                            </Button>
+                            <span className="text-sm text-gray-600 dark:text-gray-400 px-4">
+                              {currentRatingPage} / {totalRatingPages}
+                            </span>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() =>
+                                updateRatingPage(rating, Math.min(currentRatingPage + 1, totalRatingPages))
+                              }
+                              disabled={currentRatingPage === totalRatingPages}
+                              className="border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 transition-all duration-200"
+                            >
+                              <ChevronRight className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        )}
+
+                        {/* Pagination Info */}
+                        {filteredProblems.length > 0 && (
+                          <div className="text-center mb-4 text-sm text-gray-600 dark:text-gray-400">
+                            Page {currentRatingPage} of {totalRatingPages} ({filteredProblems.length} problems)
+                          </div>
+                        )}
+
                         {/* Problems List */}
                         <div className="space-y-3">
                           {filteredProblems.length === 0 ? (
@@ -650,8 +742,10 @@ export default function JianglyRoadmap() {
                               No problems found matching your search.
                             </div>
                           ) : (
-                            filteredProblems.slice(0, 120).map((problem, index) => {
+                            paginatedProblems.map((problem, index) => {
                               if (!problem || !problem.contestId || !problem.index) return null
+
+                              const globalIndex = (currentRatingPage - 1) * PROBLEMS_PER_RATING_PAGE + index + 1
 
                               return (
                                 <div
@@ -665,7 +759,7 @@ export default function JianglyRoadmap() {
                                   <div className="flex items-center gap-3 flex-1 min-w-0">
                                     <div className="flex items-center gap-2 flex-shrink-0">
                                       <span className="text-xs font-medium text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-600 px-2 py-1 rounded min-w-[2rem] text-center">
-                                        {index + 1}
+                                        {globalIndex}
                                       </span>
                                       {isProblemSolved(problem) ? (
                                         <CheckCircle className="w-5 h-5 text-green-600 dark:text-green-400 flex-shrink-0" />
@@ -723,19 +817,7 @@ export default function JianglyRoadmap() {
                               )
                             })
                           )}
-                          {filteredProblems.length > 120 && (
-                            <div className="text-center py-4 text-gray-500 dark:text-gray-400 text-sm">
-                              Showing first 120 problems. Use search to find specific problems.
-                            </div>
-                          )}
                         </div>
-
-                        {/* Search Results Info */}
-                        {searchQueries[rating] && (
-                          <div className="text-center mt-4 text-sm text-gray-500 dark:text-gray-400">
-                            Showing {Math.min(filteredProblems.length, 120)} of {filteredProblems.length} problems
-                          </div>
-                        )}
                       </CardContent>
                     )}
                   </Card>
@@ -877,6 +959,18 @@ export default function JianglyRoadmap() {
           </p>
         </footer>
       </div>
+
+      {/* Scroll to Top Button */}
+      {showScrollTop && (
+        <Button
+          onClick={scrollToTop}
+          className="fixed bottom-6 right-6 z-50 w-12 h-12 rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg hover:shadow-xl transition-all duration-300 transform hover:scale-110"
+          size="sm"
+          title="Scroll to top"
+        >
+          <ArrowUp className="w-5 h-5" />
+        </Button>
+      )}
     </div>
   )
 }
